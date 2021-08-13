@@ -1,1 +1,1 @@
-# spectra (Splice Matching, End Consistent TRAnscripts)
+# spectra (SPlice matching, End Consistent TRAnscripts)

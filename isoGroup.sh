@@ -56,9 +56,8 @@ bamAddPolyASignalAsSeqNameSuffix ()
   # Nucleic Acids REs, 33:201-212, 2005
   # Top 5 PAS hexamers AAUAAA|AUUAAA|UAUAAA|AGUAAA|AAGAAA
   # Top 2 PAS hexamers AAUAAA|AUUAAA
-
   samtools view -h - \
-  | awk 'BEGIN{OFS="\t"; terminalLen=40}
+  | awk 'BEGIN{OFS="\t"; terminalLen=50}
     function revcomp(seq)
     {
       a["T"]="A";a["A"]="T";a["C"]="G";a["G"]="C";a["N"]="N";
@@ -94,13 +93,12 @@ bamAddPolyASignalAsSeqNameSuffix ()
       if (softClipLen <= 10) {
         print $0
       } else {
-        printf "FilteredOut: softClipLen %d\t%s\n", softClipLen, $0 > "/dev/stderr"
+        printf "ReadFilteredOut: softClipLen %d\t%s\n", softClipLen, $0 > "/dev/stderr"
       }
     }' \
-    | samtools view -b -
+  | samtools view -b -
 }
    
-
 
 
 bamAdd5endAsSeqNameSuffix ()
@@ -152,10 +150,38 @@ bamAdd5endAsSeqNameSuffix ()
       if (softClipLen <= 10) {
         print $0
       } else {
-        printf "FilteredOut: softClipLen %d\t%s\n", softClipLen, $0 > "/dev/stderr"
+        printf "ReadFilteredOut: softClipLen %d\t%s\n", softClipLen, $0 > "/dev/stderr"
       }
     }' \
-    | samtools view -b -
+  | samtools view -b -
+}
+
+
+bamThreePrimeFilter ()
+{
+  local minRatioA=$1
+
+  samtools view -h - \
+  | awk --assign minRatioA=$minRatioA \
+    'BEGIN{OFS="\t"}
+    {
+      if ( match($0,/^@/) ) # header
+      {
+        # do nothing
+        print $0
+      } else {
+        match($1,/\.3endDown-([A-Za-z]*)/,buf)
+        downNuc = buf[1]
+        match($1,/\.3endPas-([0-9]*)-([A-Za-z]*)/,buf)
+        pas = buf[2]
+        countA = gsub("A|a","=",downNuc)
+        ratioA = countA / ( length(downNuc) )
+        if ( ( pas == "NOTFOUND") && (ratioA >= minRatioA) ) {
+          printf "ReadFilteredOut: internalPriming\t%s\n", $0 > "/dev/stderr"
+        } else { print $0 }
+      }
+    }' \
+  | samtools view -b -
 }
 
 
@@ -344,7 +370,7 @@ bed12ToBed12detail ()
 {
   awk 'BEGIN{OFS="\t"}{
     buf = $4
-    $4 = sprintf("IM%08d",NR)
+    $4 = sprintf("SM%08d",NR)
     print $0, $4, buf
   }'
 }
@@ -369,7 +395,7 @@ intronSetFilter ()
     for (i=1;i<=refNamesN;i++){
       split( refNames[i] , buf, ":")
       refCount = buf[5]
-      if ( refCount < minRefCount ) {flag = "FilteredOut: count of " refNames[i] " is < " minRefCount}
+      if ( refCount < minRefCount ) {flag = "ReadFilteredOut: count of " refNames[i] " is < " minRefCount}
     }
     if (flag != "ok") {
       printf "%s\t%s\n", flag, $0 > "/dev/stderr"
@@ -378,6 +404,40 @@ intronSetFilter ()
     }
   }'
 }
+
+# input - read_intronLocalNames_intronRefNames.txt
+# m54284U_200720_151958/100008005/ccs...:chr4:73404289:73421253:+   ...  ...
+# output - read_intronLocalNames_intronRefNames_boundayMf.txt
+# m54284U_200720_151958/100008005/ccs...:chr4:73404289:73421253:+   ...  ...  chr4:000:111:+
+
+most_freq_boundary () {
+  # read_intronLocalNames_intronRefNames.txt
+  local infile=$1
+  local frac=$2
+  cat $infile \
+  | awk 'BEGIN{OFS="\t"}{
+      split($1,buf,":")
+      chrom=buf[2];chromStart=buf[3];chromEnd=buf[4];strand=buf[5];
+      print chrom, chromStart, chromEnd, $1, 0, strand
+    }' \
+  | sort -k1,1 -k2,2n \
+  > ${infile}.tmpboundary
+
+  bedtools map -s -f $frac -r \
+    -a ${infile}.tmpboundary -b ${infile}.tmpboundary \
+    -c 2,3 -o mode,mode \
+  | awk 'BEGIN{OFS="\t"}{
+      boundaryMf = $1 ":" $7 ":" $8 ":" $6
+      print $4, boundaryMf
+    }'\
+  | sort -k1,1 \
+  > ${infile}.tmpboundaryMf
+
+  join $infile ${infile}.tmpboundaryMf \
+  | awk 'BEGIN{OFS="\t"}{print $1,$2,$3,$4}'
+}
+
+
 
 
 fivePrimeFilter ()
@@ -392,18 +452,10 @@ fivePrimeFilter ()
     {
       gN = gsub("G|g", "=", buf[1])
       cN = gsub("C|c", "=", buf[1])
-      if ( gN > cN ) {return "yes"} else {return "no"}
+      if ( gN >= cN ) {return "yes"} else {return "no"}
     } else { return "no" }
 
-  }BEGIN{
-    OFS="\t"
-    # init
-    str = "G|GG|CG|GGG|CGG|GCG|GGGG|CGGG|GCGG|GGCG"
-    str = str "GGGGG|CGGGG|GCGGG|GGCGG|GGGCG"
-    bufN=split(str,buf,"|")
-    for (i=1;i<=bufN;i++){ sig[ buf[i] ] = 1}
-  }
-  {
+  } BEGIN{ OFS="\t" } {
     readsN=split($14,reads,",")
     sigCount = 0
     for (i=1;i<=readsN;i++)
@@ -411,17 +463,16 @@ fivePrimeFilter ()
       match(reads[i],/\.5end-([ATGCN]*)-([ATGCN]*)/,buf)
       unmatch = buf[1]
       alignmentStart = buf[2]
-      #if ( unmatch in sig) {sigCount++}
       if ( isSig(unmatch) == "yes" ) {sigCount++}
     }
     sigRatio = sigCount / readsN
+    $4 = sprintf("%s,capSigCount=%d",$4,sigCount)
+    $4 = sprintf("%s,capSigRatio=%.2f",$4,sigRatio)
     if ( ( sigCount >= minSigCount ) || ( sigRatio >= minSigRatio ) )
     {
-      $4 = sprintf("%s,capSigCount=%d",$4,sigCount)
-      $4 = sprintf("%s,capSigRatio=%.2f",$4,sigRatio)
       print
     }else{
-      printf "FilterdOut: sigRatio %f, sigCount %f\t%s\n", sigRatio, sigCount, $0 > "/dev/stderr"
+      printf "ModelFilteredOut: capSigRatio %f, sigCount %f\t%s\n", sigRatio, sigCount, $0 > "/dev/stderr"
     }
   }'
 }
@@ -451,11 +502,11 @@ threePrimeFilter ()
     }
 
     internalPrimingRatio = internalPriming / readsN
+    $4 = sprintf("%s,internalPrimingRatio=%.2f",$4,internalPrimingRatio)
     if ( internalPrimingRatio >= minInternalPrimingRatio ) 
     {
-      printf "FilterdOut: internal priming ratio %f\t%s\n", internalPrimingRatio, $0 > "/dev/stderr"
+      printf "ModelFilteredOut: internal priming ratio %f\t%s\n", internalPrimingRatio, $0 > "/dev/stderr"
     } else {
-      $4 = sprintf("%s,internalPrimingRatio=%.2f",$4,internalPrimingRatio)
       print
     }
   }'
@@ -468,26 +519,28 @@ threePrimeFilter ()
 ###
 
 mapQ=20
-support_min_frac=0.99
+support_min_frac_intron=0.99
+support_min_frac_boundary=0.9
 
 usage ()
 {
   cat <<EOF
 
-  $0 -i infile -g genome [-q mapQ(${mapQ})] [-f support_min_frac(${support_min_frac})]
+  $0 -i infile -g genome [-q mapQ(${mapQ})] [-f support_min_frac_intron(${support_min_frac_intron})] [-r support_min_frac_boundary(${support_min_frac_boundary})]
 
 EOF
   exit 1
 }
 
 ### handle options
-while getopts i:g:q:f: opt
+while getopts i:g:q:f:r: opt
 do
   case ${opt} in
   i) infile=${OPTARG};;
   g) genome=${OPTARG};;
   q) mapQ=${OPTARG};;
-  f) support_min_frac=${OPTARG};;
+  f) support_min_frac_intron=${OPTARG};;
+  r) support_min_frac_boundary=${OPTARG};;
   *) usage;;
   esac
 done
@@ -505,12 +558,12 @@ bamAddDownstreamNucAsSeqNameSuffix ${tmpdir}/infile.bam ${genome} 20 \
 | sort -k1,1 -k2,2n $SORT_OPT_BASE \
 > ${tmpdir}/intron.bed
 
-most_freq_intron ${tmpdir}/intron.bed $support_min_frac \
+most_freq_intron ${tmpdir}/intron.bed $support_min_frac_intron \
 | sort -k1,1 -k2,2n $SORT_OPT_BASE \
 > ${tmpdir}/intron_mf.bed
 
 intersectBed -sorted -s -wa -wb \
-  -f $support_min_frac -r \
+  -f $support_min_frac_intron -r \
   -a ${tmpdir}/intron.bed \
   -b ${tmpdir}/intron_mf.bed \
 > ${tmpdir}/intron_assignment.bed \
@@ -521,13 +574,19 @@ cat ${tmpdir}/intron_assignment.bed \
 | groupBy -g 4 -c 5,11 -o collapse \
 > ${tmpdir}/read_intronLocalNames_intronRefNames.txt
 
-cat ${tmpdir}/read_intronLocalNames_intronRefNames.txt \
-| intronSetFilter 1 \
-| sort -k3,3 $SORT_OPT_BASE \
-| groupBy -g 3 -c 1 -o collapse \
-> ${tmpdir}/introns_reads.txt
+most_freq_boundary \
+  ${tmpdir}/read_intronLocalNames_intronRefNames.txt \
+  $support_min_frac_boundary \
+> ${tmpdir}/read_intronLocalNames_intronRefNames_boundaryMf.txt
 
-cat ${tmpdir}/introns_reads.txt \
+cat ${tmpdir}/read_intronLocalNames_intronRefNames_boundaryMf.txt \
+| intronSetFilter 1 \
+| sort -k3,3 -k4,4 $SORT_OPT_BASE \
+| groupBy -g 3,4 -c 1 -o collapse \
+> ${tmpdir}/introns_boundaryMf_reads.txt
+
+cat ${tmpdir}/introns_boundaryMf_reads.txt \
+| cut -f 1,3 \
 | intron_readsTobed12 \
 | bed12ToBed12detail \
 | fivePrimeFilter 3 0.5 \

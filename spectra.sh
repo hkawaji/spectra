@@ -343,7 +343,6 @@ intron_readsTobed12 ()
     if ( buf[2] < chromStart ) { chromStart = buf[2] - 1}
     # -------------------------
 
-    outflag = "ok"
     _end = chromStart
     for (i=1; i<= intronsN; i++)
     {
@@ -351,12 +350,7 @@ intron_readsTobed12 ()
       _prevEnd   = _end
       _start = buf[2]
       _end = buf[3]
-
-      ithExonSize = _start - _prevEnd
-      if (ithExonSize < 1){outflag = "ng"}
       blockSizes = blockSizes ( _start - _prevEnd ) ","
-
-      # for (i+1)th exon
       blockStarts = blockStarts ( _end - chromStart ) ","
     }
 
@@ -365,20 +359,9 @@ intron_readsTobed12 ()
     # -------------------------
 
     blockSizes = blockSizes ( chromEnd - _end ) ","
-
-    outLine = chrom "\t" chromStart "\t" chromEnd
-    outLine = outLine "\t" name "\t" readsN "\t" strand
-    outLine = outLine "\t" chromStart "\t" chromStart "\t" "0,0,0"
-    outLine = outLine "\t" blockCount "\t" blockSizes "\t" blockStarts
-
-    if (outflag == "ok") {
-      #print chrom, chromStart, chromEnd, name, readsN, strand, 
-      #  chromStart, chromStart, "0,0,0",
-      #  blockCount, blockSizes, blockStarts
-      print outLine
-    } else {
-      printf "IncorrectModel:\t%s\n", outLine > "/dev/stderr"
-    }
+    print chrom, chromStart, chromEnd, name, readsN, strand, 
+      chromStart, chromStart, "0,0,0",
+      blockCount, blockSizes, blockStarts
   }'
 }
 
@@ -387,7 +370,7 @@ bed12ToBed12detail ()
 {
   awk 'BEGIN{OFS="\t"}{
     buf = $4
-    $4 = sprintf("GM%08d",NR)
+    $4 = sprintf("SM%08d",NR)
     print $0, $4, buf
   }'
 }
@@ -455,66 +438,6 @@ most_freq_boundary () {
 }
 
 
-bed12ToIntronCoordsName ()
-{
-  awk 'BEGIN{OFS="\t"}{
-    chrom = $1; chromStart = $2; chromEnd = $3; 
-    name = $4; score = $5; strand = $6; blockCount = $10;
-    split($11,blockSizes,","); split($12,blockStarts,",");
-    intronCoords = ""
-    for (i = 2; i<= blockCount; i++)
-    {
-      intronStart = chromStart + blockStarts[i-1] + blockSizes[i-1]
-      intronEnd = chromStart + blockStarts[i]
-      intronCoord = sprintf("%s:%s:%s:%s", chrom, chromStart, chromEnd, strand)
-      intronCoords = intronCoords intronCoord ","
-    }
-    if (intronCoords != "") {
-      print intronCoords, name
-    }
-  }'
-}
-
-
-
-addIntronsMatchRef ()
-{
-  # annFile as bed12.gz
-  local annFile=$1
-  local tmpf=$( mktemp --tmpdir=${tmpdir} )
-
-  awk '{print}' > ${tmpf}
-
-  cat ${tmpf} \
-  | bed12ToIntronCoordsName \
-  | sort -k1,1 \
-  > ${tmpf}_intronCoords_name.txt
-
-  gunzip -c $annFile \
-  | bed12ToIntronCoordsName \
-  | sort -k1,1 \
-  > ${tmpf}_intronCoords_nameAnn.txt
-
-  join -t "	" -a 1 \
-    ${tmpf}_intronCoords_name.txt \
-    ${tmpf}_intronCoords_nameAnn.txt \
-  | awk 'BEGIN{OFS="\t"}{if($3 == ""){$3 = "NA"}; print}' \
-  | cut -f 2- \
-  | sort -k1,1 \
-  | groupBy -g 1 -c 2 -o collapse \
-  | awk '{printf "%s\t%s,intronsMatchRef=%s\n", $1,$1,$2}' \
-  > ${tmpf}_nameNewName.txt
-
-  cat ${tmpf} \
-  | awk 'BEGIN{OFS="\t"}{print $4, $0}' \
-  | sort -k1,1 \
-  | join -t "	" - ${tmpf}_nameNewName.txt \
-  | cut -f 2- \
-  | awk 'BEGIN{OFS="\t"}{$4 = $15;print}'  \
-  | cut -f 1-14 \
-  | sort -k1,1 -k2,2n
-}
-
 
 
 fivePrimeFilter ()
@@ -555,70 +478,16 @@ fivePrimeFilter ()
 }
 
 
-addLastExonOverlapWithOtherInternalExons ()
-{
-  local tmpf=$( mktemp --tmpdir=${tmpdir} )
-
-  awk '{print}' > ${tmpf}
-
-  cat ${tmpf} \
-  | awk --assign tmpf=${tmpf} 'BEGIN{
-      OFS="\t";
-      outfile_internal=tmpf".exon_internal"
-      outfile_last=tmpf".exon_last"
-    }
-    {
-    chrom = $1; chromStart = $2; chromEnd = $3; 
-    name = $4; score = $5; strand = $6; blockCount = $10;
-    split($11,blockSizes,",")
-    split($12,blockStarts,",")
-
-    if ( strand == "+" ) {
-      eStart = chromStart + blockStarts[blockCount]
-      eEnd   = chromStart + blockStarts[blockCount] + blockSizes[blockCount]
-      print chrom, chromStart, eStart, "internal", "0", strand > outfile_internal
-      print chrom, eStart, eEnd, name, "0", strand > outfile_last
-    } else {
-      eStart = chromStart + blockStarts[1]
-      eEnd   = chromStart + blockStarts[1] + blockSizes[1]
-      print chrom, eStart, eEnd, name, "0", strand > outfile_last
-      print chrom, eEnd, chromEnd, "internal", "0", strand > outfile_internal
-    }
-  }'
-
-  intersectBed -c -s -a ${tmpf}.exon_last -b ${tmpf}.exon_internal \
-  | cut -f 4,7 | sort -k1,1 \
-  > ${tmpf}.exon_internal_overlaps
-
-  cat ${tmpf} \
-  | awk 'BEGIN{OFS="\t"}{print $4,$0}' \
-  | sort -k1,1 \
-  | join -t "	" - ${tmpf}.exon_internal_overlaps \
-  | cut -f 2- \
-  | awk 'BEGIN{OFS="\t"}{
-    $4 = sprintf("%s,lastExonOverlapWithOtherInternalExons=%i", $4, $15)
-    print
-  }' \
-  | cut -f 1-14
-}
-
-
-
 #m54284U_200720_151958/101714429/ccs.3endDown-AAAAAAAAAAAAAAATTAGC.3endPas--NOTFOUND.5end-CG-G:chr5:138002847:138019921:-
 threePrimeFilter ()
 {
   local minRatioA=$1
   local minInternalPrimingRatio=$2
 
-  cat ${tmpf} | awk \
+  awk \
     --assign minRatioA=$minRatioA \
     --assign minInternalPrimingRatio=$minInternalPrimingRatio \
   'BEGIN{OFS="\t"}{
-
-    lastExonOverlapWithOtherInternalExons=0
-    match($4,/lastExonOverlapWithOtherInternalExons=([0-9]+)/,buf)
-    if (RLENGTH >= 0) { lastExonOverlapWithOtherInternalExons = buf[1] }
-
     readsN=split($14,reads,",")
     internalPriming = 0
     for (i=1;i<=readsN;i++) {
@@ -634,7 +503,7 @@ threePrimeFilter ()
 
     internalPrimingRatio = internalPriming / readsN
     $4 = sprintf("%s,internalPrimingRatio=%.2f",$4,internalPrimingRatio)
-    if ( ( internalPrimingRatio >= minInternalPrimingRatio ) && (lastExonOverlapWithOtherInternalExons > 0) )
+    if ( internalPrimingRatio >= minInternalPrimingRatio ) 
     {
       printf "ModelFilteredOut: internal priming ratio %f\t%s\n", internalPrimingRatio, $0 > "/dev/stderr"
     } else {
@@ -650,22 +519,21 @@ threePrimeFilter ()
 ###
 
 mapQ=20
-support_min_frac_intron=0.999
-support_min_frac_boundary=0.95
-annotation_reference=
+support_min_frac_intron=0.99
+support_min_frac_boundary=0.9
 
 usage ()
 {
   cat <<EOF
 
-  $0 -i infile -g genome [-q mapQ(${mapQ})] [-f support_min_frac_intron(${support_min_frac_intron})] [-r support_min_frac_boundary(${support_min_frac_boundary})] [-a REFERENCE_TRANSCRIPT_MODEL.bed12.gz ]
+  $0 -i infile -g genome [-q mapQ(${mapQ})] [-f support_min_frac_intron(${support_min_frac_intron})] [-r support_min_frac_boundary(${support_min_frac_boundary})]
 
 EOF
   exit 1
 }
 
 ### handle options
-while getopts i:g:q:f:r:a:d: opt
+while getopts i:g:q:f:r: opt
 do
   case ${opt} in
   i) infile=${OPTARG};;
@@ -673,7 +541,6 @@ do
   q) mapQ=${OPTARG};;
   f) support_min_frac_intron=${OPTARG};;
   r) support_min_frac_boundary=${OPTARG};;
-  a) annotation_reference=${OPTARG};;
   *) usage;;
   esac
 done
@@ -722,41 +589,6 @@ cat ${tmpdir}/introns_boundaryMf_reads.txt \
 | cut -f 1,3 \
 | intron_readsTobed12 \
 | bed12ToBed12detail \
-> ${tmpdir}/outmodel.bed12
-
-
-
-if [ ! -n "${annotation_reference-}" ]; then
-
-  cat ${tmpdir}/outmodel.bed12 \
-  | fivePrimeFilter 3 0.5 \
-  | addLastExonOverlapWithOtherInternalExons \
-  | threePrimeFilter 0.5 0.5 \
-  | sort -k1,1 -k2,2n \
-  > ${tmpdir}/outmodel_filtered.bed12
-
-else
-
-  cat ${tmpdir}/outmodel.bed12 \
-  | addIntronsMatchRef ${annotation_reference} \
-  > ${tmpdir}/outmodel_ann.bed12 \
-  
-  grep -v "intronsMatchRef=NA" ${tmpdir}/outmodel_ann.bed12 \
-  > ${tmpdir}/outmodel_ann_buf.bed12 
-
-  grep "intronsMatchRef=NA" ${tmpdir}/outmodel_ann.bed12 \
-  | fivePrimeFilter 3 0.5 \
-  | addLastExonOverlapWithOtherInternalExons \
-  | threePrimeFilter 0.5 0.5 \
-  >> ${tmpdir}/outmodel_ann_buf.bed12 
-
-  cat ${tmpdir}/outmodel_ann_buf.bed12 \
-  | sort -k1,1 -k2,2n \
-  > ${tmpdir}/outmodel_filtered.bed12
-fi
-
-cat ${tmpdir}/outmodel_filtered.bed12
-
-#| awk 'BEGIN{OFS="\t"}{buf=$4;$4=$13;$14=$14"|"buf;print $0}'
-#cp -rp ${tmpdir} ./
+| fivePrimeFilter 3 0.5 \
+| threePrimeFilter 0.5 0.5
 

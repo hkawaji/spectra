@@ -96,6 +96,7 @@ most_freq_intron ()
 support_min_count=3
 support_min_frac=0.95
 mapQ=20
+annotation_reference=
 parallel=50
 export LC_ALL=C
 
@@ -103,7 +104,7 @@ usage ()
 {
   cat <<EOF
 
-  $0 -i infile -g genome -o outprefix [-f support_min_frac ($support_min_frac)] [-c support_min_count ($support_min_count)] [-p parallel ($parallel)]
+  $0 -i infile -g genome -o outprefix [-f support_min_frac ($support_min_frac)] [-c support_min_count ($support_min_count)] [-p parallel ($parallel)] [-a ANNOTATION_REFERENCE.bed12.gz]
 
 EOF
   exit 1;
@@ -111,7 +112,7 @@ EOF
 
 
 ### handle options
-while getopts i:g:o:c:f:q:p: opt
+while getopts i:g:o:c:f:q:a:p: opt
 do
   case ${opt} in
   i) infile=${OPTARG};;
@@ -120,6 +121,7 @@ do
   c) support_min_count=${OPTARG};;
   f) support_min_frac=${OPTARG};;
   q) mapQ=${OPTARG};;
+  a) annotation_reference=${OPTARG};;
   p) parallel=${OPTARG};;
   *) usage;;
   esac
@@ -134,10 +136,21 @@ if [ ! -n "${outprefix-}" ]; then usage; fi
 tmpdir=$(mktemp -d -p ${TMPDIR:-/tmp})
 trap "test -d $tmpdir && rm -rf $tmpdir" 0 1 2 3 15
 
+minimap_opt_1st=
+if [ ! -n "${annotation_reference-}" ]; then
+  # do nothing
+  :
+else
+  gunzip -c ${annotation_reference} \
+  | bed12ToIntron \
+  > ${tmpdir}/annRefIntron.bed
+  minimap_opt_1st=" --junc-bed ${tmpdir}/annRefIntron.bed "
+fi
+
 ###
 ### alignment, 1st round
 ###
-minimap2 -t ${parallel} -a -x splice:hq ${genome} ${infile} \
+minimap2 ${minimap_opt_1st} -t ${parallel} -a -x splice:hq ${genome} ${infile} \
 | samtools view -b -q ${mapQ} -F 0x900 - \
 > ${tmpdir}/first.bam
 

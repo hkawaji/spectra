@@ -4,11 +4,9 @@
 export LC_ALL=C
 SORT_OPT_BASE="--batch-size=100"
 
-
 ### setup tmpdir
 tmpdir=$(mktemp -d -p ${TMPDIR:-/tmp})
 trap "test -d $tmpdir && rm -rf $tmpdir" 0 1 2 3 15
-
 
 
 bamAddDownstreamNucAsSeqNameSuffix ()
@@ -57,7 +55,7 @@ bamAddPolyASignalAsSeqNameSuffix ()
   # Top 5 PAS hexamers AAUAAA|AUUAAA|UAUAAA|AGUAAA|AAGAAA
   # Top 2 PAS hexamers AAUAAA|AUUAAA
   samtools view -h - \
-  | awk 'BEGIN{OFS="\t"; terminalLen=50}
+  | awk --assign tmpdir=${tmpdir} 'BEGIN{OFS="\t"; terminalLen=50}
     function revcomp(seq)
     {
       a["T"]="A";a["A"]="T";a["C"]="G";a["G"]="C";a["N"]="N";
@@ -93,7 +91,8 @@ bamAddPolyASignalAsSeqNameSuffix ()
       if (softClipLen <= 10) {
         print $0
       } else {
-        printf "ReadFilteredOut: softClipLen %d\t%s\n", softClipLen, $0 > "/dev/stderr"
+        stde = tmpdir "/err.bamAddPolyASignalAsSeqNameSuffix.txt"
+        printf "ReadFilteredOut: softClipLen %d\t%s\n", softClipLen, $0 >> stde
       }
     }' \
   | samtools view -b -
@@ -104,7 +103,7 @@ bamAddPolyASignalAsSeqNameSuffix ()
 bamAdd5endAsSeqNameSuffix ()
 {
   samtools view -h - \
-  | awk 'BEGIN{OFS="\t"}
+  | awk --assign tmpdir=${tmpdir} 'BEGIN{OFS="\t"}
     function revcomp(seq)
     {
       a["T"]="A";a["A"]="T";a["C"]="G";a["G"]="C";a["N"]="N";
@@ -150,7 +149,8 @@ bamAdd5endAsSeqNameSuffix ()
       if (softClipLen <= 10) {
         print $0
       } else {
-        printf "ReadFilteredOut: softClipLen %d\t%s\n", softClipLen, $0 > "/dev/stderr"
+        stde = tmpdir "/err.bamAdd5endAsSeqNameSuffix.txt"
+        printf "ReadFilteredOut: softClipLen %d\t%s\n", softClipLen, $0 >> stde
       }
     }' \
   | samtools view -b -
@@ -162,7 +162,7 @@ bamThreePrimeFilter ()
   local minRatioA=$1
 
   samtools view -h - \
-  | awk --assign minRatioA=$minRatioA \
+  | awk --assign minRatioA=$minRatioA --assign tmpdir=${tmpdir} \
     'BEGIN{OFS="\t"}
     {
       if ( match($0,/^@/) ) # header
@@ -177,7 +177,8 @@ bamThreePrimeFilter ()
         countA = gsub("A|a","=",downNuc)
         ratioA = countA / ( length(downNuc) )
         if ( ( pas == "NOTFOUND") && (ratioA >= minRatioA) ) {
-          printf "ReadFilteredOut: internalPriming\t%s\n", $0 > "/dev/stderr"
+          stde = tmpdir "/err.bamThreePrimeFilter.txt"
+          printf "ReadFilteredOut: internalPriming\t%s\n", $0 >> stde
         } else { print $0 }
       }
     }' \
@@ -281,7 +282,7 @@ most_freq_intron()
 
 intron_readsTobed12 ()
 {
-  awk 'BEGIN{OFS="\t"}{
+  awk --assign tmpdir=${tmpdir} 'BEGIN{OFS="\t"}{
     name = $2
     readsN = split(name,reads,",")
 
@@ -377,7 +378,8 @@ intron_readsTobed12 ()
       #  blockCount, blockSizes, blockStarts
       print outLine
     } else {
-      printf "IncorrectModel:\t%s\n", outLine > "/dev/stderr"
+      stde = tmpdir "/err.intron_readsTobed12.txt"
+      printf "IncorrectModel: %s\n", outLine >> stde
     }
   }'
 }
@@ -385,9 +387,10 @@ intron_readsTobed12 ()
 
 bed12ToBed12detail ()
 {
-  awk 'BEGIN{OFS="\t"}{
+  local prefix=$1
+  awk --assign prefix=$prefix 'BEGIN{OFS="\t"}{
     buf = $4
-    $4 = sprintf("GM%08d",NR)
+    $4 = sprintf("%s%08d",prefix,NR)
     print $0, $4, buf
   }'
 }
@@ -401,21 +404,22 @@ bed12ToBed12detail ()
 intronSetFilter ()
 {
   local minRefCount=$1
-  awk --assign minRefCount=$minRefCount 'BEGIN{OFS="\t"}{
+  awk --assign minRefCount=$minRefCount --assign tmpdir=${tmpdir} 'BEGIN{OFS="\t"}{
     localNamesN=split($2,localNames,",")
     refNamesN=split($3,refNames,",")
     flag = "ok"
     for (i=1;i<=localNamesN;i++){
       str = sprintf("I%04d:%04d",i,localNamesN)
-      if ( localNames[i] != str ) { flag = "FileredOut:" localNames[i] " != " str}
+      if ( localNames[i] != str ) { flag = "ReadFilteredOut: " localNames[i] " != " str}
     }
     for (i=1;i<=refNamesN;i++){
       split( refNames[i] , buf, ":")
       refCount = buf[5]
-      if ( refCount < minRefCount ) {flag = "ReadFilteredOut: count of " refNames[i] " is < " minRefCount}
+      if ( refCount < minRefCount ) {flag = "ReadFilteredOut: count of " refNames[i] " is smaller than " minRefCount}
     }
     if (flag != "ok") {
-      printf "%s\t%s\n", flag, $0 > "/dev/stderr"
+      stde = tmpdir "/err.intronSetFilter.txt"
+      printf "%s\t%s\n", flag, $0 >> stde
     } else {
       print
     }
@@ -524,6 +528,7 @@ fivePrimeFilter ()
   awk \
     --assign minSigCount=$minSigCount \
     --assign minSigRatio=$minSigRatio \
+    --assign tmpdir=${tmpdir} \
   'function isSig(seq) {
     if ( match(seq,/^([GCgc]*[Gg])$/,buf) )
     {
@@ -545,11 +550,12 @@ fivePrimeFilter ()
     sigRatio = sigCount / readsN
     $4 = sprintf("%s,capSigCount=%d",$4,sigCount)
     $4 = sprintf("%s,capSigRatio=%.2f",$4,sigRatio)
-    if ( ( sigCount >= minSigCount ) || ( sigRatio >= minSigRatio ) )
+    if ( ( sigCount >= minSigCount ) && ( sigRatio >= minSigRatio ) )
     {
       print
     }else{
-      printf "ModelFilteredOut: capSigRatio %f, sigCount %f\t%s\n", sigRatio, sigCount, $0 > "/dev/stderr"
+      stde = tmpdir "/err.fivePrimeFilter.txt"
+      printf "ModelFilteredOut: capSigRatio %f, sigCount %f\t%s\n", sigRatio, sigCount, $0 >> stde
     }
   }'
 }
@@ -613,6 +619,7 @@ threePrimeFilter ()
   cat ${tmpf} | awk \
     --assign minRatioA=$minRatioA \
     --assign minInternalPrimingRatio=$minInternalPrimingRatio \
+    --assign tmpdir=${tmpdir} \
   'BEGIN{OFS="\t"}{
 
     lastExonOverlapWithOtherInternalExons=0
@@ -636,7 +643,8 @@ threePrimeFilter ()
     $4 = sprintf("%s,internalPrimingRatio=%.2f",$4,internalPrimingRatio)
     if ( ( internalPrimingRatio >= minInternalPrimingRatio ) && (lastExonOverlapWithOtherInternalExons > 0) )
     {
-      printf "ModelFilteredOut: internal priming ratio %f\t%s\n", internalPrimingRatio, $0 > "/dev/stderr"
+      stde = tmpdir "/err.threePrimeFilter.txt"
+      printf "ModelFilteredOut: internal priming ratio %f\t%s\n", internalPrimingRatio, $0 >> stde
     } else {
       print
     }
@@ -653,27 +661,46 @@ mapQ=20
 support_min_frac_intron=0.999
 support_min_frac_boundary=0.95
 annotation_reference=
+fivePrimeFilterMinSigCount=1
+fivePrimeFilterMinSigRatio=0
+threePrimeFilterMinRatioA=0.5
+threePrimeFilterMinInternalPrimingRatio=0.5
+prefix=SG
 
 usage ()
 {
   cat <<EOF
 
-  $0 -i infile -g genome [-q mapQ(${mapQ})] [-f support_min_frac_intron(${support_min_frac_intron})] [-r support_min_frac_boundary(${support_min_frac_boundary})] [-a REFERENCE_TRANSCRIPT_MODEL.bed12.gz ]
+  $0 -i infile -g genome 
+    [-a REFERENCE_TRANSCRIPT_MODEL.bed12.gz ]
+    [-q mapQ(${mapQ})] 
+    [-f support_min_frac_intron(${support_min_frac_intron})] 
+    [-r support_min_frac_boundary(${support_min_frac_boundary})] 
+    [-c fivePrimeFilterMinSigCount(${fivePrimeFilterMinSigCount})] 
+    [-d fivePrimeFilterMinSigRatio(${fivePrimeFilterMinSigRatio})] 
+    [-b threePrimeFilterMinRatioA(${threePrimeFilterMinRatioA})] 
+    [-e threePrimeFilterMinInternalPrimingRatio(${threePrimeFilterMinInternalPrimingRatio})] 
+    [-x prefix('${prefix}')] 
 
 EOF
   exit 1
 }
 
 ### handle options
-while getopts i:g:q:f:r:a:d: opt
+while getopts i:g:a:q:f:r:c:d:b:e:x: opt
 do
   case ${opt} in
   i) infile=${OPTARG};;
   g) genome=${OPTARG};;
+  a) annotation_reference=${OPTARG};;
   q) mapQ=${OPTARG};;
   f) support_min_frac_intron=${OPTARG};;
   r) support_min_frac_boundary=${OPTARG};;
-  a) annotation_reference=${OPTARG};;
+  c) fivePrimeFilterMinSigCount=${OPTARG};;
+  d) fivePrimeFilterMinSigRatio=${OPTARG};;
+  b) threePrimeFilterMinRatioA=${OPTARG};;
+  e) threePrimeFilterMinInternalPrimingRatio=${OPTARG};;
+  x) prefix=${OPTARG};;
   *) usage;;
   esac
 done
@@ -721,17 +748,16 @@ cat ${tmpdir}/read_intronLocalNames_intronRefNames_boundaryMf.txt \
 cat ${tmpdir}/introns_boundaryMf_reads.txt \
 | cut -f 1,3 \
 | intron_readsTobed12 \
-| bed12ToBed12detail \
+| bed12ToBed12detail ${prefix} \
 > ${tmpdir}/outmodel.bed12
-
 
 
 if [ ! -n "${annotation_reference-}" ]; then
 
   cat ${tmpdir}/outmodel.bed12 \
-  | fivePrimeFilter 3 0.5 \
+  | fivePrimeFilter ${fivePrimeFilterMinSigCount} ${fivePrimeFilterMinSigRatio} \
   | addLastExonOverlapWithOtherInternalExons \
-  | threePrimeFilter 0.5 0.5 \
+  | threePrimeFilter ${threePrimeFilterMinRatioA} ${threePrimeFilterMinInternalPrimingRatio} \
   | sort -k1,1 -k2,2n \
   > ${tmpdir}/outmodel_filtered.bed12
 
@@ -745,9 +771,9 @@ else
   > ${tmpdir}/outmodel_ann_buf.bed12 
 
   grep "intronsMatchRef=NA" ${tmpdir}/outmodel_ann.bed12 \
-  | fivePrimeFilter 3 0.5 \
+  | fivePrimeFilter ${fivePrimeFilterMinSigCount} ${fivePrimeFilterMinSigRatio} \
   | addLastExonOverlapWithOtherInternalExons \
-  | threePrimeFilter 0.5 0.5 \
+  | threePrimeFilter ${threePrimeFilterMinRatioA} ${threePrimeFilterMinInternalPrimingRatio} \
   >> ${tmpdir}/outmodel_ann_buf.bed12 
 
   cat ${tmpdir}/outmodel_ann_buf.bed12 \
@@ -756,7 +782,7 @@ else
 fi
 
 cat ${tmpdir}/outmodel_filtered.bed12
+cat ${tmpdir}/err.*.txt >&2 
 
-#| awk 'BEGIN{OFS="\t"}{buf=$4;$4=$13;$14=$14"|"buf;print $0}'
 #cp -rp ${tmpdir} ./
 

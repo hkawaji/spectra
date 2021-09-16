@@ -576,14 +576,9 @@ addIntronsMatchRefSingleExon ()
 
 
 
-fivePrimeFilter ()
+fivePrimeAttr ()
 {
-  local minSigCount=$1
-  local minSigRatio=$2
   awk \
-    --assign minSigCount=$minSigCount \
-    --assign minSigRatio=$minSigRatio \
-    --assign tmpdir=${tmpdir} \
   'function isSig(seq) {
     if ( match(seq,/^([GCgc]*[Gg])$/,buf) )
     {
@@ -605,14 +600,15 @@ fivePrimeFilter ()
     sigRatio = sigCount / readsN
     $4 = sprintf("%s,capSigCount=%d",$4,sigCount)
     $4 = sprintf("%s,capSigRatio=%.2f",$4,sigRatio)
+    print
 
-    if ( ( sigCount >= minSigCount ) && ( sigRatio >= minSigRatio ) )
-    {
-      print
-    }else{
-      stde = tmpdir "/err.fivePrimeFilter.txt"
-      printf "ModelFilteredOut: capSigRatio %f, sigCount %f\t%s\n", sigRatio, sigCount, $0 >> stde
-    }
+    #if ( ( sigCount >= minSigCount ) && ( sigRatio >= minSigRatio ) )
+    #{
+    #  print
+    #}else{
+    #  stde = tmpdir "/err.fivePrimeFilter.txt"
+    #  printf "ModelFilteredOut: capSigRatio %f, sigCount %f\t%s\n", sigRatio, sigCount, $0 >> stde
+    #}
   }'
 }
 
@@ -686,17 +682,12 @@ addLastExonOverlapWithOtherInternalExons ()
 
 
 #m54284U_200720_151958/101714429/ccs.3endDown-AAAAAAAAAAAAAAATTAGC.3endPas--NOTFOUND.5end-CG-G:chr5:138002847:138019921:-
-threePrimeFilter ()
+threePrimeAttr ()
 {
   local minRatioA=$1
-  local minInternalPrimingRatio=$2
 
-  cat ${tmpf} | awk \
-    --assign minRatioA=$minRatioA \
-    --assign minInternalPrimingRatio=$minInternalPrimingRatio \
-    --assign tmpdir=${tmpdir} \
-  'BEGIN{OFS="\t"}{
-
+  cat ${tmpf} | awk --assign minRatioA=$minRatioA 'BEGIN{OFS="\t"}
+  {
     lastExonOverlapWithOtherInternalExons=0
     match($4,/lastExonOverlapWithOtherInternalExons=([0-9]+)/,buf)
     if (RLENGTH >= 0) { lastExonOverlapWithOtherInternalExons = buf[1] }
@@ -716,13 +707,15 @@ threePrimeFilter ()
 
     internalPrimingRatio = internalPriming / readsN
     $4 = sprintf("%s,internalPrimingRatio=%.2f",$4,internalPrimingRatio)
-    if ( ( internalPrimingRatio >= minInternalPrimingRatio ) && (lastExonOverlapWithOtherInternalExons > 0) )
-    {
-      stde = tmpdir "/err.threePrimeFilter.txt"
-      printf "ModelFilteredOut: internal priming ratio %f\t%s\n", internalPrimingRatio, $0 >> stde
-    } else {
-      print
-    }
+    print
+
+    #if ( ( internalPrimingRatio >= minInternalPrimingRatio ) && (lastExonOverlapWithOtherInternalExons > 0) )
+    #{
+    #  stde = tmpdir "/err.threePrimeFilter.txt"
+    #  printf "ModelFilteredOut: internal priming ratio %f\t%s\n", internalPrimingRatio, $0 >> stde
+    #} else {
+    #  print
+    #}
   }'
 }
 
@@ -753,10 +746,10 @@ mapQ=20
 support_min_frac_intron=0.999
 support_min_frac_boundary=0.95
 annotation_reference=
-fivePrimeFilterMinSigCount=1
-fivePrimeFilterMinSigRatio=0
+#fivePrimeFilterMinSigCount=1
+#fivePrimeFilterMinSigRatio=0
 threePrimeFilterMinRatioA=0.5
-threePrimeFilterMinInternalPrimingRatio=0.5
+#threePrimeFilterMinInternalPrimingRatio=0.5
 prefix=SG
 
 usage ()
@@ -788,10 +781,10 @@ do
   q) mapQ=${OPTARG};;
   f) support_min_frac_intron=${OPTARG};;
   r) support_min_frac_boundary=${OPTARG};;
-  c) fivePrimeFilterMinSigCount=${OPTARG};;
-  d) fivePrimeFilterMinSigRatio=${OPTARG};;
+#  c) fivePrimeFilterMinSigCount=${OPTARG};;
+#  d) fivePrimeFilterMinSigRatio=${OPTARG};;
   b) threePrimeFilterMinRatioA=${OPTARG};;
-  e) threePrimeFilterMinInternalPrimingRatio=${OPTARG};;
+#  e) threePrimeFilterMinInternalPrimingRatio=${OPTARG};;
   x) prefix=${OPTARG};;
   *) usage;;
   esac
@@ -809,6 +802,7 @@ fi
 cat ${genome}.fai | cut -f 1,2 | sort -k1,1 ${SORT_OPT_BASE} > ${tmpdir}/genome.chrom_sizes
 samtools view -bq ${mapQ} ${infile} > ${tmpdir}/infile.bam
 touch ${tmpdir}/err.dummy.txt
+
 
 
 bamAddDownstreamNucAsSeqNameSuffix ${tmpdir}/infile.bam ${genome} 20 \
@@ -855,6 +849,7 @@ cat ${tmpdir}/introns_boundaryMf_reads.txt \
 > ${tmpdir}/outmodel.bed12
 
 
+
 # single exons
 cat ${tmpdir}/infile.bed12 \
 | awk 'BEGIN{OFS="\t"}{if($10 == 1){print}}' \
@@ -879,10 +874,10 @@ if [ ! -n "${annotation_reference-}" ]; then
 
   cat ${tmpdir}/outmodel.bed12 \
   | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
-  | fivePrimeFilter ${fivePrimeFilterMinSigCount} ${fivePrimeFilterMinSigRatio} \
+  | fivePrimeAttr \
   | addLastExonOverlapWithOtherInternalExons \
-  | threePrimeFilter ${threePrimeFilterMinRatioA} ${threePrimeFilterMinInternalPrimingRatio} \
-  > ${tmpdir}/outmodel_filtered.bed12
+  | threePrimeAttr $threePrimeFilterMinRatioA \
+  > ${tmpdir}/outmodel_attr.bed12
 
 else
 
@@ -896,24 +891,16 @@ else
   | addIntronsMatchRefSingleExon ${annotation_reference} \
   >> ${tmpdir}/outmodel_ann.bed12 \
 
-  # include reference matching models
-  grep -v "matchRef=NA" ${tmpdir}/outmodel_ann.bed12 \
-  | fivePrimeFilter 0 0 \
+  cat ${tmpdir}/outmodel_ann.bed12 \
+  | fivePrimeAttr \
   | addLastExonOverlapWithOtherInternalExons \
-  | threePrimeFilter 1 0 \
-  > ${tmpdir}/outmodel_filtered.bed12
-
-  # include novel models
-  grep "matchRef=NA" ${tmpdir}/outmodel_ann.bed12 \
-  | fivePrimeFilter ${fivePrimeFilterMinSigCount} ${fivePrimeFilterMinSigRatio} \
-  | addLastExonOverlapWithOtherInternalExons \
-  | threePrimeFilter ${threePrimeFilterMinRatioA} ${threePrimeFilterMinInternalPrimingRatio} \
-  >> ${tmpdir}/outmodel_filtered.bed12
+  | threePrimeAttr $threePrimeFilterMinRatioA \
+  > ${tmpdir}/outmodel_attr.bed12
 
 fi
 
 cat ${tmpdir}/err.*.txt >&2 
 
-cat ${tmpdir}/outmodel_filtered.bed12 \
+cat ${tmpdir}/outmodel_attr.bed12 \
 | reAssignIds
 

@@ -15,8 +15,14 @@ bamAddDownstreamNucAsSeqNameSuffix ()
   local genome=$2
   local targetLen=$3
 
+  samtools view ${infile} \
+  | cut -f 1 \
+  | sort -k1,1 $SORT_OPT_BASE \
+  > ${tmpdir}/seqids.txt
+
   bamToBed -bed12 -i ${infile} \
-  | awk --assign targetLen=$targetLen 'BEGIN{OFS="\t"}{
+  | awk --assign targetLen=$targetLen 'BEGIN{OFS = "\t"}
+    {
       chrom = $1
       chromStart = $2
       chromEnd = $3
@@ -35,6 +41,7 @@ bamAddDownstreamNucAsSeqNameSuffix ()
   | bedtools getfasta -tab -nameOnly -s -fi ${genome} -bed stdin \
   | awk 'BEGIN{OFS="\t"}{ $1 = substr($1,0,length($1) - 3); print }' \
   | sort -k1,1 $SORT_OPT_BASE \
+  | join -t "	"  -a 1  -e N -o 1.1,2.2 ${tmpdir}/seqids.txt - \
   > ${tmpdir}/downNuc.txt
 
   samtools view -H ${infile} > ${tmpdir}/downNuc.sam
@@ -441,7 +448,7 @@ most_freq_boundary () {
       chrom=buf[2];chromStart=buf[3];chromEnd=buf[4];strand=buf[5];
       print chrom, chromStart, chromEnd, $1, 0, strand
     }' \
-  | sort -k1,1 -k2,2n \
+  | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
   > ${infile}.tmpboundary
 
   bedtools map -s -f $frac -r \
@@ -451,7 +458,7 @@ most_freq_boundary () {
       boundaryMf = $1 ":" $7 ":" $8 ":" $6
       print $4, boundaryMf
     }'\
-  | sort -k1,1 \
+  | sort -k1,1 ${SORT_OPT_BASE} \
   > ${infile}.tmpboundaryMf
 
   join $infile ${infile}.tmpboundaryMf \
@@ -489,34 +496,82 @@ addIntronsMatchRef ()
 
   awk '{print}' > ${tmpf}
 
+  # prep intronCoordsName for input
   cat ${tmpf} \
   | bed12ToIntronCoordsName \
-  | sort -k1,1 \
+  | sort -k1,1 ${SORT_OPT_BASE} \
   > ${tmpf}_intronCoords_name.txt
 
+  # prep intronCoordsName for annotation
   gunzip -c $annFile \
   | bed12ToIntronCoordsName \
-  | sort -k1,1 \
+  | sort -k1,1 ${SORT_OPT_BASE} \
   > ${tmpf}_intronCoords_nameAnn.txt
 
+  # join
   join -t "	" -a 1 \
     ${tmpf}_intronCoords_name.txt \
     ${tmpf}_intronCoords_nameAnn.txt \
   | awk 'BEGIN{OFS="\t"}{if($3 == ""){$3 = "NA"}; print}' \
   | cut -f 2- \
-  | sort -k1,1 \
+  | sort -k1,1 ${SORT_OPT_BASE} \
   | groupBy -g 1 -c 2 -o collapse \
-  | awk '{printf "%s\t%s,intronsMatchRef=%s\n", $1,$1,$2}' \
+  | awk '{printf "%s\t%s,matchRef=%s\n", $1,$1,$2}' \
   > ${tmpf}_nameNewName.txt
 
+  # print
   cat ${tmpf} \
   | awk 'BEGIN{OFS="\t"}{print $4, $0}' \
-  | sort -k1,1 \
+  | sort -k1,1 ${SORT_OPT_BASE} \
   | join -t "	" - ${tmpf}_nameNewName.txt \
   | cut -f 2- \
   | awk 'BEGIN{OFS="\t"}{$4 = $15;print}'  \
   | cut -f 1-14 \
-  | sort -k1,1 -k2,2n
+  | sort -k1,1 -k2,2n ${SORT_OPT_BASE}
+}
+
+
+
+addIntronsMatchRefSingleExon ()
+{
+  # annFile as bed12.gz
+  local annFile=$1
+  local tmpf=$( mktemp --tmpdir=${tmpdir} )
+  local tmpfa=$( mktemp --tmpdir=${tmpdir} )
+
+  sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
+  > ${tmpf}
+
+  gunzip -c $annFile \
+  | awk '{if($10 == 1){print}}' \
+  | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
+  > ${tmpfa}
+
+  # list ID pairs
+  intersectBed -nonamecheck -wa -wb -s -a ${tmpf} -b ${tmpfa} \
+  | cut -f 4,18 \
+  | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
+  | groupBy -g 1 -c 2 -o collapse \
+  | awk '{printf "%s\t%s,matchRef=%s\n", $1,$1,$2}' \
+  > ${tmpf}_nameNewName.txt
+
+  # add NA
+  cut -f 4 ${tmpf} \
+  | sort -k1,1 -k2,2n \
+  | join -t "	" -a 1 - ${tmpf}_nameNewName.txt \
+  | awk 'BEGIN{OFS="\t"}{if ($2 == ""){$2 = "NA"};print }' \
+  > ${tmpf}_nameNewName.txt.tmp
+  mv -f ${tmpf}_nameNewName.txt.tmp ${tmpf}_nameNewName.txt
+
+  # include the matched information
+  cat ${tmpf} \
+  | awk 'BEGIN{OFS="\t"}{print $4, $0}' \
+  | sort -k1,1 ${SORT_OPT_BASE} \
+  | join -t "	" - ${tmpf}_nameNewName.txt \
+  | cut -f 2- \
+  | awk 'BEGIN{OFS="\t"}{$4 = $15;print}'  \
+  | cut -f 1-14 \
+  | sort -k1,1 -k2,2n ${SORT_OPT_BASE}
 }
 
 
@@ -550,6 +605,7 @@ fivePrimeFilter ()
     sigRatio = sigCount / readsN
     $4 = sprintf("%s,capSigCount=%d",$4,sigCount)
     $4 = sprintf("%s,capSigRatio=%.2f",$4,sigRatio)
+
     if ( ( sigCount >= minSigCount ) && ( sigRatio >= minSigRatio ) )
     {
       print
@@ -565,9 +621,12 @@ addLastExonOverlapWithOtherInternalExons ()
 {
   local tmpf=$( mktemp --tmpdir=${tmpdir} )
 
+  touch ${tmpf}.exon_internal
+  touch ${tmpf}.exon_last
   awk '{print}' > ${tmpf}
 
   cat ${tmpf} \
+  | awk 'BEGIN{OFS="\t"}{if($10 != 1){print}}' \
   | awk --assign tmpf=${tmpf} 'BEGIN{
       OFS="\t";
       outfile_internal=tmpf".exon_internal"
@@ -592,13 +651,29 @@ addLastExonOverlapWithOtherInternalExons ()
     }
   }'
 
-  intersectBed -c -s -a ${tmpf}.exon_last -b ${tmpf}.exon_internal \
-  | cut -f 4,7 | sort -k1,1 \
+  sort -k1,1 -k2,2n ${SORT_OPT_BASE} ${tmpf}.exon_internal > ${tmpf}.exon_internal.tmp
+  mv -f ${tmpf}.exon_internal.tmp ${tmpf}.exon_internal
+
+  sort -k1,1 -k2,2n ${SORT_OPT_BASE} ${tmpf}.exon_last > ${tmpf}.exon_last.tmp
+  mv -f ${tmpf}.exon_last.tmp ${tmpf}.exon_last
+
+  intersectBed -nonamecheck -c -s -f 0.5 -a ${tmpf}.exon_last -b ${tmpf}.exon_internal \
+  | cut -f 4,7 \
   > ${tmpf}.exon_internal_overlaps
 
   cat ${tmpf} \
+  | awk 'BEGIN{OFS="\t"}{if($10 == 1){print}}' \
+  | cut -f 1-6 | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
+  | intersectBed -nonamecheck -c -s -f 0.5 -a - -b ${tmpf}.exon_internal \
+  | cut -f 4,7 \
+  >> ${tmpf}.exon_internal_overlaps
+
+  sort -k1,1 ${SORT_OPT_BASE}  ${tmpf}.exon_internal_overlaps > ${tmpf}.exon_internal_overlaps.tmp
+  mv -f ${tmpf}.exon_internal_overlaps.tmp ${tmpf}.exon_internal_overlaps
+
+  cat ${tmpf} \
   | awk 'BEGIN{OFS="\t"}{print $4,$0}' \
-  | sort -k1,1 \
+  | sort -k1,1 ${SORT_OPT_BASE} \
   | join -t "	" - ${tmpf}.exon_internal_overlaps \
   | cut -f 2- \
   | awk 'BEGIN{OFS="\t"}{
@@ -646,6 +721,23 @@ threePrimeFilter ()
       stde = tmpdir "/err.threePrimeFilter.txt"
       printf "ModelFilteredOut: internal priming ratio %f\t%s\n", internalPrimingRatio, $0 >> stde
     } else {
+      print
+    }
+  }'
+}
+
+
+
+reAssignIds ()
+{
+  sort -k1,1 -k2,2n ${SORT_OPT_BASE}  \
+  | awk --assign prefix=$prefix 'BEGIN{OFS="\t"}{
+    match($4,"(SingleExon|MultiExon)[0-9]+,");
+    if ( RLENGTH > 0 )
+    {
+      id = sprintf("%s%08d",prefix,NR)
+      $4 = id "," substr($4,RLENGTH + 1)
+      $13 = id
       print
     }
   }'
@@ -708,15 +800,26 @@ done
 if [ ! -n "${infile-}" ]; then usage; fi
 if [ ! -n "${genome-}" ]; then usage; fi
 
+
+
+if [ ! -n "${genome}.fai" ]; then
+  samtools faidx ${genome}
+fi
+
+cat ${genome}.fai | cut -f 1,2 | sort -k1,1 ${SORT_OPT_BASE} > ${tmpdir}/genome.chrom_sizes
 samtools view -bq ${mapQ} ${infile} > ${tmpdir}/infile.bam
+touch ${tmpdir}/err.dummy.txt
+
 
 bamAddDownstreamNucAsSeqNameSuffix ${tmpdir}/infile.bam ${genome} 20 \
 | bamAddPolyASignalAsSeqNameSuffix \
 | bamAdd5endAsSeqNameSuffix \
 | bamToBed -bed12 -i stdin  \
+| tee ${tmpdir}/infile.bed12 \
 | bed12ToIntron \
-| sort -k1,1 -k2,2n $SORT_OPT_BASE \
+| sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
 > ${tmpdir}/intron.bed
+
 
 most_freq_intron ${tmpdir}/intron.bed $support_min_frac_intron \
 | sort -k1,1 -k2,2n $SORT_OPT_BASE \
@@ -748,41 +851,69 @@ cat ${tmpdir}/read_intronLocalNames_intronRefNames_boundaryMf.txt \
 cat ${tmpdir}/introns_boundaryMf_reads.txt \
 | cut -f 1,3 \
 | intron_readsTobed12 \
-| bed12ToBed12detail ${prefix} \
+| bed12ToBed12detail MultiExon \
 > ${tmpdir}/outmodel.bed12
+
+
+# single exons
+cat ${tmpdir}/infile.bed12 \
+| awk 'BEGIN{OFS="\t"}{if($10 == 1){print}}' \
+| cut -f 1-6 \
+| awk 'BEGIN{OFS="\t"}{$4=$4":"$1":"$2":"$3":"$6; print}' \
+| sort -k1,1 -k2,2  $SORT_OPT_BASE \
+| mergeBed -s -c 4,5,6 -o collapse,count,distinct \
+| awk 'BEGIN{OFS="\t"}{
+    thickStart = $2; thickEnd = $2; itemRgb = "0,0,0";
+    blockCount = 1; blockSizes = $3 - $2","; blockStarts = 0",";
+    print $0, thickStart, thickEnd, itemRgb, blockCount, blockSizes, blockStarts
+  }' \
+| bed12ToBed12detail SingleExon \
+> ${tmpdir}/outmodel.singleExon.bed12
 
 
 if [ ! -n "${annotation_reference-}" ]; then
 
+  # add single exons
+  cat ${tmpdir}/outmodel.singleExon.bed12 \
+  >> ${tmpdir}/outmodel.bed12
+
   cat ${tmpdir}/outmodel.bed12 \
+  | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
   | fivePrimeFilter ${fivePrimeFilterMinSigCount} ${fivePrimeFilterMinSigRatio} \
   | addLastExonOverlapWithOtherInternalExons \
   | threePrimeFilter ${threePrimeFilterMinRatioA} ${threePrimeFilterMinInternalPrimingRatio} \
-  | sort -k1,1 -k2,2n \
   > ${tmpdir}/outmodel_filtered.bed12
 
 else
 
+  # matching references
   cat ${tmpdir}/outmodel.bed12 \
   | addIntronsMatchRef ${annotation_reference} \
   > ${tmpdir}/outmodel_ann.bed12 \
-  
-  grep -v "intronsMatchRef=NA" ${tmpdir}/outmodel_ann.bed12 \
-  > ${tmpdir}/outmodel_ann_buf.bed12 
 
-  grep "intronsMatchRef=NA" ${tmpdir}/outmodel_ann.bed12 \
+  # matching references (single exon)
+  cat ${tmpdir}/outmodel.singleExon.bed12 \
+  | addIntronsMatchRefSingleExon ${annotation_reference} \
+  >> ${tmpdir}/outmodel_ann.bed12 \
+
+  # include reference matching models
+  grep -v "matchRef=NA" ${tmpdir}/outmodel_ann.bed12 \
+  | fivePrimeFilter 0 0 \
+  | addLastExonOverlapWithOtherInternalExons \
+  | threePrimeFilter 1 0 \
+  > ${tmpdir}/outmodel_filtered.bed12
+
+  # include novel models
+  grep "matchRef=NA" ${tmpdir}/outmodel_ann.bed12 \
   | fivePrimeFilter ${fivePrimeFilterMinSigCount} ${fivePrimeFilterMinSigRatio} \
   | addLastExonOverlapWithOtherInternalExons \
   | threePrimeFilter ${threePrimeFilterMinRatioA} ${threePrimeFilterMinInternalPrimingRatio} \
-  >> ${tmpdir}/outmodel_ann_buf.bed12 
+  >> ${tmpdir}/outmodel_filtered.bed12
 
-  cat ${tmpdir}/outmodel_ann_buf.bed12 \
-  | sort -k1,1 -k2,2n \
-  > ${tmpdir}/outmodel_filtered.bed12
 fi
 
-cat ${tmpdir}/outmodel_filtered.bed12
 cat ${tmpdir}/err.*.txt >&2 
 
-#cp -rp ${tmpdir} ./
+cat ${tmpdir}/outmodel_filtered.bed12 \
+| reAssignIds
 

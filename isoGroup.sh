@@ -595,7 +595,12 @@ fivePrimeAttr ()
       match(reads[i],/\.5end-([ATGCN]*)-([ATGCN]*)/,buf)
       unmatch = buf[1]
       alignmentStart = buf[2]
-      if ( isSig(unmatch) == "yes" ) {sigCount++}
+      if ( isSig(unmatch) == "yes" ) {
+        sigCount++
+      } else {
+        match(reads[i],/\.5end--G/)
+        sigCount++
+      }
     }
     sigRatio = sigCount / readsN
     $4 = sprintf("%s,capSigCount=%d",$4,sigCount)

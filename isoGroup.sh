@@ -590,6 +590,7 @@ fivePrimeAttr ()
   } BEGIN{ OFS="\t" } {
     readsN=split($14,reads,",")
     sigCount = 0
+    sigCountIncl = 0
     for (i=1;i<=readsN;i++)
     {
       match(reads[i],/\.5end-([ATGCN]*)-([ATGCN]*)/,buf)
@@ -597,14 +598,17 @@ fivePrimeAttr ()
       alignmentStart = buf[2]
       if ( isSig(unmatch) == "yes" ) {
         sigCount++
+        sigCountIncl++
       } else {
-        match(reads[i],/\.5end--G/)
-        sigCount++
+        if ( match(reads[i],/\.5end--G/) ) { sigCountIncl++ }
       }
     }
     sigRatio = sigCount / readsN
+    sigRatioIncl = sigCountIncl / readsN
     $4 = sprintf("%s,capSigCount=%d",$4,sigCount)
     $4 = sprintf("%s,capSigRatio=%.2f",$4,sigRatio)
+    $4 = sprintf("%s,capSigCountIncl=%d",$4,sigCountIncl)
+    $4 = sprintf("%s,capSigRatioIncl=%.2f",$4,sigRatioIncl)
     print
 
     #if ( ( sigCount >= minSigCount ) && ( sigRatio >= minSigRatio ) )

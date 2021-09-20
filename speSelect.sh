@@ -6,7 +6,7 @@ threePrimeFilterMinInternalPrimingRatio=0.5
 matchRef=best
 lessPrioritizeSingleCapCount=yes
 intergenicRescue=yes
-filterPath=./spectra/isoFilter.sh
+filterPath=./spectra/speFilter.sh
 debug_dir=
 nonSelectedFile=
 
@@ -16,13 +16,13 @@ usage ()
 
   gunzip -c ISOGROUP_OUTPUT.bed.gz \\
   | $0 \\
-       [ -n nonSelectedFile ]
+       [ -n fileOfNotSelectedModels ]
        [ -c fivePrimeFilterMinSigCount ($fivePrimeFilterMinSigCount) ]
        [ -r fivePrimeFilterMinSigRatio ($fivePrimeFilterMinSigRatio) ]
        [ -i threePrimeFilterMinInternalPrimingRatio ($threePrimeFilterMinInternalPrimingRatio) ]
-       [ -m matchRef (best|all|agnostic) ]
-       [ -l lessPrioritizeSingleCapCount (yes|no) ]
-       [ -u intergenicRescue (yes|no) ]
+       [ -m matchRef (best[all|agnostic]) ]
+       [ -l lessPrioritizeSingleCapCount (yes[no]) ]
+       [ -u intergenicRescue (yes[no]) ]
        [ -f filterPath (${filterPath}) ]
        [ -d debug_dir ]
 
@@ -93,7 +93,7 @@ if [ "$lessPrioritizeSingleCapCount" == "yes" ]; then
     }' \
   > ${tmpdir}/selected.bed.tmp
 
-  bedtools map -f 0.5 -r -s -a ${tmpdir}/selected.bed.tmp -b ${tmpdir}/selected.bed.tmp -c 15 -o max \
+  bedtools map -nonamecheck -f 0.5 -r -s -a ${tmpdir}/selected.bed.tmp -b ${tmpdir}/selected.bed.tmp -c 15 -o max \
   | awk --assign tmpdir=$tmpdir 'BEGIN{
       OFS="\t"
       discardFile = tmpdir "/discarded2.bed"
@@ -132,17 +132,17 @@ fi
 
 if [ "$intergenicRescue" == "yes" ]; then
 
-  intersectBed -wa -u -s \
+  intersectBed -nonamecheck -wa -u -s \
     -a ${tmpdir}/discarded2.bed \
     -b ${tmpdir}/selected2.bed \
   > ${tmpdir}/discarded3.bed
 
-  intersectBed -wa -s -v \
+  intersectBed -nonamecheck -wa -s -v \
     -a ${tmpdir}/discarded2.bed \
     -b ${tmpdir}/selected2.bed \
   > ${tmpdir}/discarded2_non_ovlp.bed
 
-  bedtools map -f 0.5 -r -s -a ${tmpdir}/discarded2_non_ovlp.bed -b ${tmpdir}/discarded2_non_ovlp.bed -c 5 -o max \
+  bedtools map -nonamecheck -f 0.5 -r -s -a ${tmpdir}/discarded2_non_ovlp.bed -b ${tmpdir}/discarded2_non_ovlp.bed -c 5 -o max \
   | awk --assign tmpdir=$tmpdir 'BEGIN{
       OFS="\t"
       discardFile = tmpdir "/discarded3.bed"

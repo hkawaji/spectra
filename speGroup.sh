@@ -2,7 +2,8 @@
 
 
 export LC_ALL=C
-SORT_OPT_BASE="--batch-size=100"
+#SORT_OPT_BASE="--batch-size=100"
+SORT_OPT_BASE=
 
 ### setup tmpdir
 tmpdir=$(mktemp -d -p ${TMPDIR:-/tmp})
@@ -380,9 +381,6 @@ intron_readsTobed12 ()
     outLine = outLine "\t" blockCount "\t" blockSizes "\t" blockStarts
 
     if (outflag == "ok") {
-      #print chrom, chromStart, chromEnd, name, readsN, strand, 
-      #  chromStart, chromStart, "0,0,0",
-      #  blockCount, blockSizes, blockStarts
       print outLine
     } else {
       stde = tmpdir "/err.intron_readsTobed12.txt"
@@ -442,6 +440,7 @@ most_freq_boundary () {
   # read_intronLocalNames_intronRefNames.txt
   local infile=$1
   local frac=$2
+
   cat $infile \
   | awk 'BEGIN{OFS="\t"}{
       split($1,buf,":")
@@ -477,7 +476,7 @@ bed12ToIntronCoordsName ()
     {
       intronStart = chromStart + blockStarts[i-1] + blockSizes[i-1]
       intronEnd = chromStart + blockStarts[i]
-      intronCoord = sprintf("%s:%s:%s:%s", chrom, chromStart, chromEnd, strand)
+      intronCoord = sprintf("%s:%s:%s:%s", chrom, intronStart, intronEnd, strand)
       intronCoords = intronCoords intronCoord ","
     }
     if (intronCoords != "") {
@@ -548,7 +547,7 @@ addIntronsMatchRefSingleExon ()
   > ${tmpfa}
 
   # list ID pairs
-  intersectBed -nonamecheck -wa -wb -s -a ${tmpf} -b ${tmpfa} \
+  intersectBed -f 0.5 -r -nonamecheck -wa -wb -s -a ${tmpf} -b ${tmpfa} \
   | cut -f 4,18 \
   | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
   | groupBy -g 1 -c 2 -o collapse \
@@ -607,17 +606,10 @@ fivePrimeAttr ()
     sigRatioIncl = sigCountIncl / readsN
     $4 = sprintf("%s,capSigCount=%d",$4,sigCount)
     $4 = sprintf("%s,capSigRatio=%.2f",$4,sigRatio)
-    $4 = sprintf("%s,capSigCountIncl=%d",$4,sigCountIncl)
-    $4 = sprintf("%s,capSigRatioIncl=%.2f",$4,sigRatioIncl)
+    #$4 = sprintf("%s,capSigCountIncl=%d",$4,sigCountIncl)
+    #$4 = sprintf("%s,capSigRatioIncl=%.2f",$4,sigRatioIncl)
     print
 
-    #if ( ( sigCount >= minSigCount ) && ( sigRatio >= minSigRatio ) )
-    #{
-    #  print
-    #}else{
-    #  stde = tmpdir "/err.fivePrimeFilter.txt"
-    #  printf "ModelFilteredOut: capSigRatio %f, sigCount %f\t%s\n", sigRatio, sigCount, $0 >> stde
-    #}
   }'
 }
 
@@ -717,14 +709,6 @@ threePrimeAttr ()
     internalPrimingRatio = internalPriming / readsN
     $4 = sprintf("%s,internalPrimingRatio=%.2f",$4,internalPrimingRatio)
     print
-
-    #if ( ( internalPrimingRatio >= minInternalPrimingRatio ) && (lastExonOverlapWithOtherInternalExons > 0) )
-    #{
-    #  stde = tmpdir "/err.threePrimeFilter.txt"
-    #  printf "ModelFilteredOut: internal priming ratio %f\t%s\n", internalPrimingRatio, $0 >> stde
-    #} else {
-    #  print
-    #}
   }'
 }
 
@@ -755,11 +739,10 @@ mapQ=20
 support_min_frac_intron=0.999
 support_min_frac_boundary=0.95
 annotation_reference=
-#fivePrimeFilterMinSigCount=1
-#fivePrimeFilterMinSigRatio=0
 threePrimeFilterMinRatioA=0.5
 #threePrimeFilterMinInternalPrimingRatio=0.5
 prefix=SG
+debug_dir=
 
 usage ()
 {
@@ -770,18 +753,17 @@ usage ()
     [-q mapQ(${mapQ})] 
     [-f support_min_frac_intron(${support_min_frac_intron})] 
     [-r support_min_frac_boundary(${support_min_frac_boundary})] 
-    [-c fivePrimeFilterMinSigCount(${fivePrimeFilterMinSigCount})] 
-    [-d fivePrimeFilterMinSigRatio(${fivePrimeFilterMinSigRatio})] 
     [-b threePrimeFilterMinRatioA(${threePrimeFilterMinRatioA})] 
     [-e threePrimeFilterMinInternalPrimingRatio(${threePrimeFilterMinInternalPrimingRatio})] 
     [-x prefix('${prefix}')] 
+    [-d intermediate_file_directory_for_debug ] 
 
 EOF
   exit 1
 }
 
 ### handle options
-while getopts i:g:a:q:f:r:c:d:b:e:x: opt
+while getopts i:g:a:q:f:r:c:d:b:e:x:d: opt
 do
   case ${opt} in
   i) infile=${OPTARG};;
@@ -790,11 +772,9 @@ do
   q) mapQ=${OPTARG};;
   f) support_min_frac_intron=${OPTARG};;
   r) support_min_frac_boundary=${OPTARG};;
-#  c) fivePrimeFilterMinSigCount=${OPTARG};;
-#  d) fivePrimeFilterMinSigRatio=${OPTARG};;
   b) threePrimeFilterMinRatioA=${OPTARG};;
-#  e) threePrimeFilterMinInternalPrimingRatio=${OPTARG};;
   x) prefix=${OPTARG};;
+  d) debug_dir=${OPTARG};;
   *) usage;;
   esac
 done
@@ -813,7 +793,6 @@ samtools view -bq ${mapQ} ${infile} > ${tmpdir}/infile.bam
 touch ${tmpdir}/err.dummy.txt
 
 
-
 bamAddDownstreamNucAsSeqNameSuffix ${tmpdir}/infile.bam ${genome} 20 \
 | bamAddPolyASignalAsSeqNameSuffix \
 | bamAdd5endAsSeqNameSuffix \
@@ -823,12 +802,11 @@ bamAddDownstreamNucAsSeqNameSuffix ${tmpdir}/infile.bam ${genome} 20 \
 | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
 > ${tmpdir}/intron.bed
 
-
 most_freq_intron ${tmpdir}/intron.bed $support_min_frac_intron \
 | sort -k1,1 -k2,2n $SORT_OPT_BASE \
 > ${tmpdir}/intron_mf.bed
 
-intersectBed -sorted -s -wa -wb \
+intersectBed -nonamecheck -sorted -s -wa -wb \
   -f $support_min_frac_intron -r \
   -a ${tmpdir}/intron.bed \
   -b ${tmpdir}/intron_mf.bed \
@@ -857,14 +835,12 @@ cat ${tmpdir}/introns_boundaryMf_reads.txt \
 | bed12ToBed12detail MultiExon \
 > ${tmpdir}/outmodel.bed12
 
-
-
 # single exons
 cat ${tmpdir}/infile.bed12 \
 | awk 'BEGIN{OFS="\t"}{if($10 == 1){print}}' \
 | cut -f 1-6 \
 | awk 'BEGIN{OFS="\t"}{$4=$4":"$1":"$2":"$3":"$6; print}' \
-| sort -k1,1 -k2,2  $SORT_OPT_BASE \
+| sort -k1,1 -k2,2n  $SORT_OPT_BASE \
 | mergeBed -s -c 4,5,6 -o collapse,count,distinct \
 | awk 'BEGIN{OFS="\t"}{
     thickStart = $2; thickEnd = $2; itemRgb = "0,0,0";
@@ -873,7 +849,6 @@ cat ${tmpdir}/infile.bed12 \
   }' \
 | bed12ToBed12detail SingleExon \
 > ${tmpdir}/outmodel.singleExon.bed12
-
 
 if [ ! -n "${annotation_reference-}" ]; then
 
@@ -913,3 +888,6 @@ cat ${tmpdir}/err.*.txt >&2
 cat ${tmpdir}/outmodel_attr.bed12 \
 | reAssignIds
 
+if [ -n "${debug_dir-}" ]; then 
+  mv ${tmpdir} ${debug_dir}
+fi

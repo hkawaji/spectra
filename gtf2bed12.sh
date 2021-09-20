@@ -6,6 +6,7 @@ usage ()
 {
   cat <<EOF
 usage: $0 INFILE.gtf.gz
+
 EOF
   exit 1
 }

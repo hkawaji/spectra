@@ -131,6 +131,7 @@ if [ ! -n "${infile-}" ]; then usage; fi
 if [ ! -n "${genome-}" ]; then usage; fi
 if [ ! -n "${outprefix-}" ]; then usage; fi
 
+SORT_OPT_BASE="${SORT_OPT_BASE} --parallel=${parallel}"
 
 ### setup for later
 tmpdir=$(mktemp -d -p ${TMPDIR:-/tmp})

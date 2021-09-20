@@ -13,7 +13,7 @@ usage ()
 
 This script produce a cleaned-up fastq files from PacBio CCS raw reads
 produced by a template switch-based cDNA library protocol [^1],
-based on the steps described in its analysis protocol v3.1.
+based on the steps described in its analysis protocol v3.1 [^2].
 
 Dependencies:
 * [flip_reads.py](https://github.com/mortazavilab/ENCODE-references)
@@ -31,7 +31,7 @@ This script runs the v3.1 as it is in 'Part I', and trim
 GGG stretch subsequently.
 
 Note: the library protocol [^1] describes TSO sequence as below,
-where 'common' part is also used as 3' adaptor too.
+where 'common' part is also used as 3' adaptor.
 
   5'-AAGCAGTGGTATCAACGCAGAGTACrGrG+G-3'
      |--- common ------------|

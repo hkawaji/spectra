@@ -876,7 +876,7 @@ else
   | addIntronsMatchRefSingleExon ${annotation_reference} \
   >> ${tmpdir}/outmodel_ann.bedDetail
 
-  cat ${tmpdir}/outmodel_ann.bedDetail
+  cat ${tmpdir}/outmodel_ann.bedDetail \
   | fivePrimeAttr \
   | addLastExonOverlapWithOtherInternalExons \
   | threePrimeAttr $threePrimeFilterMinRatioA \

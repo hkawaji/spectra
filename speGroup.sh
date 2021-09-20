@@ -833,7 +833,7 @@ cat ${tmpdir}/introns_boundaryMf_reads.txt \
 | cut -f 1,3 \
 | intron_readsTobed12 \
 | bed12ToBed12detail MultiExon \
-> ${tmpdir}/outmodel.bed12
+> ${tmpdir}/outmodel.bedDetail
 
 # single exons
 cat ${tmpdir}/infile.bed12 \
@@ -848,44 +848,46 @@ cat ${tmpdir}/infile.bed12 \
     print $0, thickStart, thickEnd, itemRgb, blockCount, blockSizes, blockStarts
   }' \
 | bed12ToBed12detail SingleExon \
-> ${tmpdir}/outmodel.singleExon.bed12
+> ${tmpdir}/outmodel.singleExon.bedDetail
 
 if [ ! -n "${annotation_reference-}" ]; then
 
   # add single exons
-  cat ${tmpdir}/outmodel.singleExon.bed12 \
-  >> ${tmpdir}/outmodel.bed12
+  cat ${tmpdir}/outmodel.singleExon.bedDetail \
+  >> ${tmpdir}/outmodel.bedDetail
 
-  cat ${tmpdir}/outmodel.bed12 \
+  cat ${tmpdir}/outmodel.bedDetail \
   | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
   | fivePrimeAttr \
   | addLastExonOverlapWithOtherInternalExons \
   | threePrimeAttr $threePrimeFilterMinRatioA \
-  > ${tmpdir}/outmodel_attr.bed12
+  | gzip -c --fast \
+  > ${tmpdir}/outmodel_attr.bedDetail.gz
 
 else
 
   # matching references
-  cat ${tmpdir}/outmodel.bed12 \
+  cat ${tmpdir}/outmodel.bedDetail \
   | addIntronsMatchRef ${annotation_reference} \
-  > ${tmpdir}/outmodel_ann.bed12 \
+  > ${tmpdir}/outmodel_ann.bedDetail
 
   # matching references (single exon)
-  cat ${tmpdir}/outmodel.singleExon.bed12 \
+  cat ${tmpdir}/outmodel.singleExon.bedDetail \
   | addIntronsMatchRefSingleExon ${annotation_reference} \
-  >> ${tmpdir}/outmodel_ann.bed12 \
+  >> ${tmpdir}/outmodel_ann.bedDetail
 
-  cat ${tmpdir}/outmodel_ann.bed12 \
+  cat ${tmpdir}/outmodel_ann.bedDetail
   | fivePrimeAttr \
   | addLastExonOverlapWithOtherInternalExons \
   | threePrimeAttr $threePrimeFilterMinRatioA \
-  > ${tmpdir}/outmodel_attr.bed12
+  | gzip -c --fast \
+  > ${tmpdir}/outmodel_attr.bedDetail.gz
 
 fi
 
 cat ${tmpdir}/err.*.txt >&2 
 
-cat ${tmpdir}/outmodel_attr.bed12 \
+gunzip -c ${tmpdir}/outmodel_attr.bedDetail.gz \
 | reAssignIds
 
 if [ -n "${debug_dir-}" ]; then 

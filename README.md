@@ -1,8 +1,6 @@
 
 # spectra - building gene models based on full-length cDNA long reads
 
-Overview
---------
 spectra (SPlice matching, End Consistent TRAnscripts) is a set of scripts
 to build gene models based on full-length cDNA reads. It employs an approach
 to enrich 5'-complete reads by using 5'-end nucleotides not encoded in the genome.
@@ -68,7 +66,7 @@ Selection criteria (by `speSelect.sh`)
 Citation
 ------
 
-    Kawaji H. (2021) spectra, a set of scripts to build gene models based on full-length cDNA reads, https://github.com/hkawaji/spectra (2021)
+    Kawaji H. (2021) spectra, a set of scripts to build gene models based on full-length cDNA reads, https://github.com/hkawaji/spectra
 
 ---
 

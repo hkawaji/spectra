@@ -48,8 +48,8 @@ End features (inspected by `speGroup.sh`)
 * 5-end cap signature
     - `5end-{G|C}*G[GENOME_ALIGNMENT]`, where the number of `G` should be larger than `C`
 * Internal priming signature - when both of the following conditions are true
-    - No PAS (poly adenylation signal,  `AAUAAA` or `AUUAAA`)
-    - Downstream (20bp) of the alignments on the genome is `A` rich (>50%, )
+    - No major PAS (poly adenylation signal,  `AAUAAA` or `AUUAAA`)
+    - Downstream (20bp) of the alignments on the genome is `A` rich (>50%)
 
 
 Selection criteria (by `speSelect.sh`)

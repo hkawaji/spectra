@@ -3,7 +3,8 @@
 
 export LC_ALL=C
 #SORT_OPT_BASE="--batch-size=100"
-SORT_OPT_BASE=
+SORT_OPT_BASE=" --compress-program=lzop "
+
 
 ### setup tmpdir
 tmpdir=$(mktemp -d -p ${TMPDIR:-/tmp})
@@ -53,7 +54,10 @@ bamAddDownstreamNucAsSeqNameSuffix ()
   >> ${tmpdir}/downNuc.sam
 
   samtools view -b ${tmpdir}/downNuc.sam \
-  | samtools sort - 
+  | samtools sort -  > ${tmpdir}/downNuc.bam
+
+  rm -f ${tmpdir}/downNuc.sam
+  cat ${tmpdir}/downNuc.bam
 }
 
 
@@ -268,7 +272,7 @@ most_freq_intron()
   local frac=$2
   local bedMf=$( mktemp --tmpdir=${tmpdir} )
 
-  cat ${infile} \
+  gunzip -c ${infile} \
   | most_freq_intron_sub $frac \
   > ${bedMf}
 
@@ -648,24 +652,26 @@ addLastExonOverlapWithOtherInternalExons ()
     }
   }'
 
-  sort -k1,1 -k2,2n ${SORT_OPT_BASE} ${tmpf}.exon_internal > ${tmpf}.exon_internal.tmp
-  mv -f ${tmpf}.exon_internal.tmp ${tmpf}.exon_internal
+  sort -k1,1 -k2,2n ${SORT_OPT_BASE} ${tmpf}.exon_internal \
+  | gzip -c --fast > ${tmpf}.exon_internal.gz
+  rm -f ${tmpf}.exon_internal
 
-  sort -k1,1 -k2,2n ${SORT_OPT_BASE} ${tmpf}.exon_last > ${tmpf}.exon_last.tmp
-  mv -f ${tmpf}.exon_last.tmp ${tmpf}.exon_last
+  sort -k1,1 -k2,2n ${SORT_OPT_BASE} ${tmpf}.exon_last \
+  | gzip -c --fast > ${tmpf}.exon_last.gz
+  rm -f ${tmpf}.exon_last
 
-  intersectBed -nonamecheck -c -s -f 0.5 -a ${tmpf}.exon_last -b ${tmpf}.exon_internal \
+  intersectBed -nonamecheck -c -s -f 0.5 -a ${tmpf}.exon_last.gz -b ${tmpf}.exon_internal.gz \
   | cut -f 4,7 \
   > ${tmpf}.exon_internal_overlaps
 
   cat ${tmpf} \
   | awk 'BEGIN{OFS="\t"}{if($10 == 1){print}}' \
   | cut -f 1-6 | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
-  | intersectBed -nonamecheck -c -s -f 0.5 -a - -b ${tmpf}.exon_internal \
+  | intersectBed -nonamecheck -c -s -f 0.5 -a - -b ${tmpf}.exon_internal.gz \
   | cut -f 4,7 \
   >> ${tmpf}.exon_internal_overlaps
 
-  sort -k1,1 ${SORT_OPT_BASE}  ${tmpf}.exon_internal_overlaps > ${tmpf}.exon_internal_overlaps.tmp
+  sort -k1,1 ${SORT_OPT_BASE} ${tmpf}.exon_internal_overlaps > ${tmpf}.exon_internal_overlaps.tmp
   mv -f ${tmpf}.exon_internal_overlaps.tmp ${tmpf}.exon_internal_overlaps
 
   cat ${tmpf} \
@@ -800,19 +806,22 @@ bamAddDownstreamNucAsSeqNameSuffix ${tmpdir}/infile.bam ${genome} 20 \
 | tee ${tmpdir}/infile.bed12 \
 | bed12ToIntron \
 | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
-> ${tmpdir}/intron.bed
+| gzip -c --fast \
+> ${tmpdir}/intron.bed.gz
 
-most_freq_intron ${tmpdir}/intron.bed $support_min_frac_intron \
+most_freq_intron ${tmpdir}/intron.bed.gz $support_min_frac_intron \
 | sort -k1,1 -k2,2n $SORT_OPT_BASE \
-> ${tmpdir}/intron_mf.bed
+| gzip -c --fast \
+> ${tmpdir}/intron_mf.bed.gz
 
 intersectBed -nonamecheck -sorted -s -wa -wb \
   -f $support_min_frac_intron -r \
-  -a ${tmpdir}/intron.bed \
-  -b ${tmpdir}/intron_mf.bed \
-> ${tmpdir}/intron_assignment.bed \
+  -a ${tmpdir}/intron.bed.gz \
+  -b ${tmpdir}/intron_mf.bed.gz \
+| gzip -c --fast \
+> ${tmpdir}/intron_assignment.bed.gz \
 
-cat ${tmpdir}/intron_assignment.bed \
+gunzip -c ${tmpdir}/intron_assignment.bed.gz \
 | sed -e 's/,/\t/' \
 | sort -k4,4 -k5,5 $SORT_OPT_BASE \
 | groupBy -g 4 -c 5,11 -o collapse \

@@ -551,7 +551,7 @@ addIntronsMatchRefSingleExon ()
   > ${tmpfa}
 
   # list ID pairs
-  intersectBed -f 0.5 -r -nonamecheck -wa -wb -s -a ${tmpf} -b ${tmpfa} \
+  intersectBed -f 0.5 -r -sorted -nonamecheck -wa -wb -s -a ${tmpf} -b ${tmpfa} \
   | cut -f 4,18 \
   | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
   | groupBy -g 1 -c 2 -o collapse \
@@ -658,14 +658,14 @@ addLastExonOverlapWithOtherInternalExons ()
   | gzip -c --fast > ${tmpf}.exon_last.gz
   rm -f ${tmpf}.exon_last
 
-  intersectBed -nonamecheck -c -s -f 0.5 -a ${tmpf}.exon_last.gz -b ${tmpf}.exon_internal.gz \
+  intersectBed -sorted -nonamecheck -c -s -f 0.5 -a ${tmpf}.exon_last.gz -b ${tmpf}.exon_internal.gz \
   | cut -f 4,7 \
   > ${tmpf}.exon_internal_overlaps
 
   cat ${tmpf} \
   | awk 'BEGIN{OFS="\t"}{if($10 == 1){print}}' \
   | cut -f 1-6 | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
-  | intersectBed -nonamecheck -c -s -f 0.5 -a - -b ${tmpf}.exon_internal.gz \
+  | intersectBed -sorted -nonamecheck -c -s -f 0.5 -a - -b ${tmpf}.exon_internal.gz \
   | cut -f 4,7 \
   >> ${tmpf}.exon_internal_overlaps
 
@@ -813,7 +813,7 @@ most_freq_intron ${tmpdir}/intron.bed.gz $support_min_frac_intron \
 | gzip -c --fast \
 > ${tmpdir}/intron_mf.bed.gz
 
-intersectBed -nonamecheck -sorted -s -wa -wb \
+intersectBed -sorted -nonamecheck -s -wa -wb \
   -f $support_min_frac_intron -r \
   -a ${tmpdir}/intron.bed.gz \
   -b ${tmpdir}/intron_mf.bed.gz \

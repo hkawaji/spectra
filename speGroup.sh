@@ -104,7 +104,7 @@ bamAddPolyASignalAsSeqNameSuffix ()
         print $0
       } else {
         stde = tmpdir "/err.bamAddPolyASignalAsSeqNameSuffix.txt"
-        printf "ReadFilteredOut: softClipLen %d\t%s\n", softClipLen, $0 >> stde
+        print "ReadFilteredOut: softClipLen " softClipLen "\t" $0 >> stde
       }
     }' \
   | samtools view -b -
@@ -162,7 +162,7 @@ bamAdd5endAsSeqNameSuffix ()
         print $0
       } else {
         stde = tmpdir "/err.bamAdd5endAsSeqNameSuffix.txt"
-        printf "ReadFilteredOut: softClipLen %d\t%s\n", softClipLen, $0 >> stde
+        print "ReadFilteredOut: softClipLen " softClipLen "\t" $0 >> stde
       }
     }' \
   | samtools view -b -
@@ -190,7 +190,7 @@ bamThreePrimeFilter ()
         ratioA = countA / ( length(downNuc) )
         if ( ( pas == "NOTFOUND") && (ratioA >= minRatioA) ) {
           stde = tmpdir "/err.bamThreePrimeFilter.txt"
-          printf "ReadFilteredOut: internalPriming\t%s\n", $0 >> stde
+          print "ReadFilteredOut: internalPriming\t" $0 >> stde
         } else { print $0 }
       }
     }' \
@@ -388,7 +388,7 @@ intron_readsTobed12 ()
       print outLine
     } else {
       stde = tmpdir "/err.intron_readsTobed12.txt"
-      printf "IncorrectModel: %s\n", outLine >> stde
+      print "IncorrectModel: " outLine >> stde
     }
   }'
 }
@@ -428,7 +428,7 @@ intronSetFilter ()
     }
     if (flag != "ok") {
       stde = tmpdir "/err.intronSetFilter.txt"
-      printf "%s\t%s\n", flag, $0 >> stde
+      print flag "\t" $0 >> stde
     } else {
       print
     }
@@ -519,7 +519,7 @@ addIntronsMatchRef ()
   | cut -f 2- \
   | sort -k1,1 ${SORT_OPT_BASE} \
   | groupBy -g 1 -c 2 -o collapse \
-  | awk '{printf "%s\t%s,matchRef=%s\n", $1,$1,$2}' \
+  | awk '{print $1 "\t" $1 ",matchRef=" $2 }' \
   > ${tmpf}_nameNewName.txt
 
   # print
@@ -555,7 +555,7 @@ addIntronsMatchRefSingleExon ()
   | cut -f 4,18 \
   | sort -k1,1 -k2,2n ${SORT_OPT_BASE} \
   | groupBy -g 1 -c 2 -o collapse \
-  | awk '{printf "%s\t%s,matchRef=%s\n", $1,$1,$2}' \
+  | awk '{print $1 "\t" $1 ",matchRef=" $2 }' \
   > ${tmpf}_nameNewName.txt
 
   # add NA
@@ -608,12 +608,10 @@ fivePrimeAttr ()
     }
     sigRatio = sigCount / readsN
     sigRatioIncl = sigCountIncl / readsN
-    $4 = sprintf("%s,capSigCount=%d",$4,sigCount)
-    $4 = sprintf("%s,capSigRatio=%.2f",$4,sigRatio)
-    #$4 = sprintf("%s,capSigCountIncl=%d",$4,sigCountIncl)
-    #$4 = sprintf("%s,capSigRatioIncl=%.2f",$4,sigRatioIncl)
+    CONVFMT="%.2f"
+    $4 = $4 ",capSigCount=" sigCount
+    $4 = $4 ",capSigRatio=" sigRatio
     print
-
   }'
 }
 
@@ -680,7 +678,7 @@ addLastExonOverlapWithOtherInternalExons ()
   | join -t "	" - ${tmpf}.exon_internal_overlaps \
   | cut -f 2- \
   | awk 'BEGIN{OFS="\t"}{
-    $4 = sprintf("%s,lastExonOverlapWithOtherInternalExons=%i", $4, $15)
+    $4 = $4 ",lastExonOverlapWithOtherInternalExons=" $15
     print
   }' \
   | cut -f 1-14
@@ -713,7 +711,8 @@ threePrimeAttr ()
     }
 
     internalPrimingRatio = internalPriming / readsN
-    $4 = sprintf("%s,internalPrimingRatio=%.2f",$4,internalPrimingRatio)
+    CONVFMT="%.2f"
+    $4 = $4 ",internalPrimingRatio=" internalPrimingRatio
     print
   }'
 }

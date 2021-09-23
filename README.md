@@ -39,8 +39,11 @@ Helper scripts
 --------------
 * `speFilter.sh` - used in `speSelect.sh`
 * `gtf2bed12.sh` - format conversion, which is used to convert reference gene model into BED12
-* `pbclean.sh` - take CCS raw reads in BAM to produce clean CCS reads in FASTQ. 5'-ends are carefully processed.
 * `seqnamesuffix2fq.sh` - add suffix to sequence names, which can be used to add replicate information
+* directory of `lrgasp` - specific processing
+	- `pbclean.sh` - take CCS raw reads in BAM to produce clean CCS reads in FASTQ. 5'-ends are carefully processed.
+	- `simclean.sh` - flip the orientation based on polyA and trim it.
+	- `datapack.sh` - packing data based on the resulting bedDetail file
 
 
 End features (inspected by `speGroup.sh`)

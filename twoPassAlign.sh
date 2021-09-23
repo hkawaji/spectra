@@ -1,6 +1,8 @@
 #!/bin/sh
 
-SORT_OPT_BASE="--batch-size=100"
+#SORT_OPT_BASE="--batch-size=100"
+SORT_OPT_BASE=" --compress-program=lzop "
+
 
 #chr1    1216913 1231935 m54284U_201027_092252/199160/ccs        60      -       1216913 1231935 255,0,0 7       775,176,159,114,137,479,44      0,1544,1855,6330,6918,11554,14978
 bed12ToIntron ()
@@ -176,6 +178,9 @@ intersectBed -v -s \
   -a ${tmpdir}/intron.bed \
   -b ${tmpdir}/intron_ref.bed \
 > ${tmpdir}/intron_unsupported.bed
+
+
+rm -f ${tmpdir}/first.bam
 
 ###
 ### alignment, 2nd round

@@ -3,7 +3,10 @@
 
 export LC_ALL=C
 #SORT_OPT_BASE="--batch-size=100"
-SORT_OPT_BASE=" --compress-program=lzop "
+#SORT_OPT_BASE=" --compress-program=lzop "
+SORT_OPT_BASE=" --compress-program=lzop --buffer-size=5G "
+SAMTOOLS_VIEW_OPT=" --threads 10 "
+SAMTOOLS_SORT_OPT=" --threads 10 "
 
 
 ### setup tmpdir
@@ -17,7 +20,7 @@ bamAddDownstreamNucAsSeqNameSuffix ()
   local genome=$2
   local targetLen=$3
 
-  samtools view ${infile} \
+  samtools view ${SAMTOOLS_VIEW_OPT} ${infile} \
   | cut -f 1 \
   | sort -k1,1 $SORT_OPT_BASE \
   > ${tmpdir}/seqids.txt
@@ -46,15 +49,15 @@ bamAddDownstreamNucAsSeqNameSuffix ()
   | join -t "	"  -a 1  -e N -o 1.1,2.2 ${tmpdir}/seqids.txt - \
   > ${tmpdir}/downNuc.txt
 
-  samtools view -H ${infile} > ${tmpdir}/downNuc.sam
-  samtools view ${infile} \
+  samtools view ${SAMTOOLS_VIEW_OPT} -H ${infile} > ${tmpdir}/downNuc.sam
+  samtools view ${SAMTOOLS_VIEW_OPT} ${infile} \
   | sort -k1,1 $SORT_OPT_BASE \
   | join -t "	" - ${tmpdir}/downNuc.txt \
   | awk 'BEGIN{OFS="\t"}{$1 = $1 ".3endDown-" $NF; NF = NF - 1; print}' \
   >> ${tmpdir}/downNuc.sam
 
-  samtools view -b ${tmpdir}/downNuc.sam \
-  | samtools sort -  > ${tmpdir}/downNuc.bam
+  samtools view ${SAMTOOLS_VIEW_OPT} -b ${tmpdir}/downNuc.sam \
+  | samtools sort ${SAMTOOLS_SORT_OPT} -  > ${tmpdir}/downNuc.bam
 
   rm -f ${tmpdir}/downNuc.sam
   cat ${tmpdir}/downNuc.bam
@@ -66,7 +69,7 @@ bamAddPolyASignalAsSeqNameSuffix ()
   # Nucleic Acids REs, 33:201-212, 2005
   # Top 5 PAS hexamers AAUAAA|AUUAAA|UAUAAA|AGUAAA|AAGAAA
   # Top 2 PAS hexamers AAUAAA|AUUAAA
-  samtools view -h - \
+  samtools view ${SAMTOOLS_VIEW_OPT} -h - \
   | awk --assign tmpdir=${tmpdir} 'BEGIN{OFS="\t"; terminalLen=50}
     function revcomp(seq)
     {
@@ -107,14 +110,14 @@ bamAddPolyASignalAsSeqNameSuffix ()
         print "ReadFilteredOut: softClipLen " softClipLen "\t" $0 >> stde
       }
     }' \
-  | samtools view -b -
+  | samtools view ${SAMTOOLS_VIEW_OPT} -b -
 }
    
 
 
 bamAdd5endAsSeqNameSuffix ()
 {
-  samtools view -h - \
+  samtools view ${SAMTOOLS_VIEW_OPT} -h - \
   | awk --assign tmpdir=${tmpdir} 'BEGIN{OFS="\t"}
     function revcomp(seq)
     {
@@ -165,7 +168,7 @@ bamAdd5endAsSeqNameSuffix ()
         print "ReadFilteredOut: softClipLen " softClipLen "\t" $0 >> stde
       }
     }' \
-  | samtools view -b -
+  | samtools view ${SAMTOOLS_VIEW_OPT} -b -
 }
 
 
@@ -173,7 +176,7 @@ bamThreePrimeFilter ()
 {
   local minRatioA=$1
 
-  samtools view -h - \
+  samtools view ${SAMTOOLS_VIEW_OPT} -h - \
   | awk --assign minRatioA=$minRatioA --assign tmpdir=${tmpdir} \
     'BEGIN{OFS="\t"}
     {
@@ -194,7 +197,7 @@ bamThreePrimeFilter ()
         } else { print $0 }
       }
     }' \
-  | samtools view -b -
+  | samtools view ${SAMTOOLS_VIEW_OPT} -b -
 }
 
 
@@ -794,7 +797,7 @@ if [ ! -n "${genome}.fai" ]; then
 fi
 
 cat ${genome}.fai | cut -f 1,2 | sort -k1,1 ${SORT_OPT_BASE} > ${tmpdir}/genome.chrom_sizes
-samtools view -bq ${mapQ} ${infile} > ${tmpdir}/infile.bam
+samtools view ${SAMTOOLS_VIEW_OPT} -bq ${mapQ} ${infile} > ${tmpdir}/infile.bam
 touch ${tmpdir}/err.dummy.txt
 
 

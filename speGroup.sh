@@ -565,7 +565,7 @@ addIntronsMatchRefSingleExon ()
   cut -f 4 ${tmpf} \
   | sort -k1,1 -k2,2n \
   | join -t "	" -a 1 - ${tmpf}_nameNewName.txt \
-  | awk 'BEGIN{OFS="\t"}{if ($2 == ""){$2 = "NA"};print }' \
+  | awk 'BEGIN{OFS="\t"}{if ($2 == ""){$2 = $1 ",matchRef=NA"};print }' \
   > ${tmpf}_nameNewName.txt.tmp
   mv -f ${tmpf}_nameNewName.txt.tmp ${tmpf}_nameNewName.txt
 
